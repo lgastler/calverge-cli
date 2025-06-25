@@ -13,7 +13,7 @@ struct CalvergeCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "calverge",
         abstract: "A utility to sync calendars",
-        version: "2.0.0",
+        version: "0.0.1",
         subcommands: [Calendars.self, Sync.self]
     )
 }
