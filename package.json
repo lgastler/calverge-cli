@@ -1,6 +1,7 @@
 {
   "name": "calverge-cli",
-  "version": "1.0.0",
+  "private": true,
+  "version": "0.0.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lgastler/calverge-cli.git"
@@ -11,13 +12,5 @@
   "bugs": {
     "url": "https://github.com/lgastler/calverge-cli/issues"
   },
-  "homepage": "https://github.com/lgastler/calverge-cli#readme",
-  "devDependencies": {
-    "@changesets/cli": "^2.29.5"
-  },
-  "scripts": {
-    "changeset": "changeset",
-    "version": "changeset version",
-    "release": "changeset publish"
-  }
+  "homepage": "https://github.com/lgastler/calverge-cli#readme"
 }
