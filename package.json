@@ -13,7 +13,7 @@
   },
   "homepage": "https://github.com/lgastler/calverge-cli#readme",
   "devDependencies": {
-    "@changesets/cli": "^2.27.1"
+    "@changesets/cli": "^2.29.5"
   },
   "scripts": {
     "changeset": "changeset",
