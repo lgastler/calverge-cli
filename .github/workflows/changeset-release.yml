@@ -53,9 +53,12 @@ jobs:
       - name: Install Dependencies
         run: yarn
 
-      - name: Create Release Pull Request
+      - name: Create Release Pull Request or Publish to GitHub
         id: changesets
         uses: changesets/action@v1
+        with:
+          version: yarn version
+          publish: yarn release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,10 +66,7 @@ jobs:
   release:
     runs-on: macos-latest
     needs: [changeset]
-    if: |
-      always() && 
-      (startsWith(github.ref, 'refs/tags/v') || 
-       (needs.changeset.result == 'success' && needs.changeset.outputs.published == 'true'))
+    if: startsWith(github.ref, 'refs/tags/v')
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
       checksum: ${{ steps.checksum.outputs.CHECKSUM }}
@@ -82,15 +82,7 @@ jobs:
 
       - name: Get version
         id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            # Triggered by tag push
-            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          else
-            # Triggered after changeset publish - extract from package.json
-            VERSION=$(node -p "require('./package.json').version")
-            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          fi
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Update Swift version
         run: |

@@ -17,7 +17,7 @@
   },
   "scripts": {
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version": "changeset version",
     "release": "changeset publish"
   }
 }
