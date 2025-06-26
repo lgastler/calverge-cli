@@ -1,114 +1,77 @@
-name: Release with Changesets
+name: CI/CD
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
-  release:
+  # Build and test job that runs on all PRs and pushes
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Swift
+        uses: swift-actions/setup-swift@v1
+        with:
+          swift-version: "5.9"
+
+      - name: Build
+        run: swift build
+
+      # Add test step when you have tests
+      # - name: Test
+      #   run: swift test
+
+  # Changesets job that creates release PRs or publishes
+  changeset:
     runs-on: ubuntu-latest
+    needs: [test]
     if: github.ref == 'refs/heads/main'
     outputs:
       published: ${{ steps.changesets.outputs.published }}
-      version: ${{ steps.extract-version.outputs.version }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
     steps:
       - uses: actions/checkout@v4
         with:
+          # Need full history for changesets
           fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: 20
+          cache: npm
 
-      - name: Install changesets
-        run: npm install @changesets/cli
+      - name: Install dependencies
+        run: npm install
 
-      - name: Update Swift version helper
-        run: |
-          cat > update-swift-version.js << 'EOF'
-          const fs = require('fs');
-          const path = require('path');
-          
-          const args = process.argv.slice(2);
-          if (args.length !== 1) {
-            console.error('Usage: node update-swift-version.js <version>');
-            process.exit(1);
-          }
-          
-          const newVersion = args[0];
-          const swiftFile = 'Sources/CalvergeCLI.swift';
-          
-          try {
-            let content = fs.readFileSync(swiftFile, 'utf8');
-            content = content.replace(/version: "[^"]*"/, `version: "${newVersion}"`);
-            fs.writeFileSync(swiftFile, content);
-            console.log(`Updated Swift version to ${newVersion}`);
-          } catch (error) {
-            console.error('Error updating Swift version:', error);
-            process.exit(1);
-          }
-          EOF
-
-      - name: Create Release Pull Request or Publish to npm
+      - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
-          # This will create a PR if there are changesets, or publish if the PR was merged
-          version: npx changeset version
-          publish: echo "No npm publish needed - we handle binary releases separately"
+          # This creates a PR with version bumps when changesets exist
+          # When that PR is merged, it will publish (but we handle releases separately)
+          publish: echo "Release handled in separate job"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update Swift version if release was published
-        if: steps.changesets.outputs.published == 'true'
-        run: |
-          # Extract version from package.json since it was just updated
-          VERSION=$(node -p "require('./package.json').version")
-          echo "Updating Swift version to $VERSION"
-          node update-swift-version.js "$VERSION"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Sources/CalvergeCLI.swift
-          git commit -m "chore: update Swift version to $VERSION"
-          git push
-
-      - name: Extract version from published packages
-        id: extract-version
-        if: steps.changesets.outputs.published == 'true'
-        run: |
-          # If packages were published, extract version from the published info
-          echo '${{ steps.changesets.outputs.publishedPackages }}' | jq -r '.[0].version' > version.txt
-          VERSION=$(cat version.txt)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Published version: $VERSION"
-
-      - name: Create Git Tag
-        if: steps.changesets.outputs.published == 'true'
-        run: |
-          VERSION=${{ steps.extract-version.outputs.version }}
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-
-  build-release:
+  # Build and release job that runs when a tag is pushed or changesets publishes
+  release:
     runs-on: macos-latest
-    needs: [release]
+    needs: [changeset]
     if: |
       always() && 
       (startsWith(github.ref, 'refs/tags/v') || 
-       (needs.release.result == 'success' && needs.release.outputs.published == 'true'))
+       (needs.changeset.result == 'success' && needs.changeset.outputs.published == 'true'))
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
       checksum: ${{ steps.checksum.outputs.CHECKSUM }}
@@ -116,7 +79,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref || format('refs/tags/v{0}', needs.release.outputs.version) }}
 
       - name: Set up Swift
         uses: swift-actions/setup-swift@v1
@@ -130,16 +92,29 @@ jobs:
             # Triggered by tag push
             echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
           else
-            # Triggered after release job
-            echo "VERSION=${{ needs.release.outputs.version }}" >> $GITHUB_OUTPUT
+            # Triggered after changeset publish - extract from package.json
+            VERSION=$(node -p "require('./package.json').version")
+            echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           fi
+
+      - name: Update Swift version
+        run: |
+          cat > update-swift-version.js << 'EOF'
+          const fs = require('fs');
+          const version = process.argv[2];
+          const swiftFile = 'Sources/CalvergeCLI.swift';
+
+          let content = fs.readFileSync(swiftFile, 'utf8');
+          content = content.replace(/version: "[^"]*"/, `version: "${version}"`);
+          fs.writeFileSync(swiftFile, content);
+          console.log(`Updated Swift version to ${version}`);
+          EOF
+
+          node update-swift-version.js "${{ steps.version.outputs.VERSION }}"
 
       - name: Build and sign executable
         run: |
-          # Build release binary
           swift build -c release
-
-          # Sign the executable (ad-hoc signing)
           codesign --force --sign - --entitlements calverge.entitlements .build/release/calverge
 
       - name: Create archive
@@ -157,6 +132,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
           files: |
             calverge-${{ steps.version.outputs.VERSION }}-macos.tar.gz
           body: |
@@ -183,10 +159,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Update Homebrew formula when a new release is created
   update-homebrew:
     runs-on: ubuntu-latest
-    needs: [build-release]
-    if: success() && (startsWith(github.ref, 'refs/tags/v') || needs.build-release.result == 'success')
+    needs: [release]
+    if: success()
     steps:
       - name: Update Homebrew formula
         uses: mislav/bump-homebrew-formula-action@v3
@@ -194,7 +171,7 @@ jobs:
           formula-name: calverge
           formula-path: Formula/calverge.rb
           homebrew-tap: lgastler/homebrew-tap
-          download-url: https://github.com/${{ github.repository }}/releases/download/v${{ needs.build-release.outputs.version }}/calverge-${{ needs.build-release.outputs.version }}-macos.tar.gz
+          download-url: https://github.com/${{ github.repository }}/releases/download/v${{ needs.release.outputs.version }}/calverge-${{ needs.release.outputs.version }}-macos.tar.gz
           commit-message: |
             {{formulaName}} {{version}}
 
