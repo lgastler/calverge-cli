@@ -14,24 +14,6 @@ categories:
       - 'chore'
       - 'docs'
       - 'ci'
-commitish:
-  - title: 'Features'
-    match:
-      - 'feat'
-      - 'feature'
-  - title: 'Bug Fixes'
-    match:
-      - 'fix'
-      - 'bug'
-  - title: 'Maintenance'
-    match:
-      - 'chore'
-      - 'docs'
-      - 'ci'
-      - 'style'
-      - 'refactor'
-      - 'perf'
-      - 'test'
 change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
 template: |
   ## Changes
