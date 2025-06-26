@@ -5,7 +5,7 @@ on:
     branches:
       - main
     tags:
-      - 'v*'
+      - "v*"
   pull_request:
     branches:
       - main
@@ -13,6 +13,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   test:
@@ -85,16 +87,23 @@ jobs:
           # Extract content for the current version from CHANGELOG.md
           # Assumes CHANGELOG.md has headings like "## [X.Y.Z] - YYYY-MM-DD"
           # and extracts content until the next heading or end of file.
-          VERSION_TAG="v${{ steps.version.outputs.VERSION }}"
-          CHANGELOG_CONTENT=$(awk -v RS="## " -v VERSION="${{ steps.version.outputs.VERSION }}" '/^\[VERSION\]/{print "## "$0; exit}' CHANGELOG.md)
-          # Remove the version heading itself from the content
-          CHANGELOG_CONTENT=$(echo "$CHANGELOG_CONTENT" | sed -n "/^\[${{ steps.version.outputs.VERSION }}\]/!p")
-          # Trim leading/trailing whitespace
-          CHANGELOG_CONTENT=$(echo "$CHANGELOG_CONTENT" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          VERSION_TO_FIND="${{ steps.version.outputs.VERSION }}"
           
-          # Escape newlines for multiline output
-          ESCAPED_CHANGELOG_CONTENT="$(echo "$CHANGELOG_CONTENT" | sed -z 's/\n/%0A/g')"
-          echo "CHANGELOG_BODY=$ESCAPED_CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          # Use awk to find the block for the current version
+          # This awk command finds the block starting with "## [VERSION]" and ending before the next "##" or EOF
+          CHANGELOG_BLOCK=$(awk -v version_to_find="[${VERSION_TO_FIND}]" '
+            /^## /{found=0} 
+            $0 ~ "^## " version_to_find {found=1; next} 
+            found {print} 
+            ' CHANGELOG.md)
+          
+          # Trim leading/trailing whitespace from the extracted block
+          CHANGELOG_BLOCK=$(echo "$CHANGELOG_BLOCK" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          
+          # Set the output variable for multiline content
+          echo "CHANGELOG_BODY<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_BLOCK" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
