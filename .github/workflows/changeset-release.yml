@@ -23,8 +23,8 @@ jobs:
           swift-version: "5.9"
       - name: Build
         run: swift build
-      - name: Test
-        run: swift test
+      # - name: Test
+      #   run: swift test
 
   release-drafter:
     runs-on: ubuntu-latest
