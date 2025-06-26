@@ -12,6 +12,8 @@ permissions:
   pull-requests: write
   actions: write
 
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
 jobs:
   # Build and test job that runs on all PRs and pushes
   test:
@@ -60,10 +62,6 @@ jobs:
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
-        with:
-          # This creates a PR with version bumps when changesets exist
-          # When that PR is merged, it will publish (but we handle releases separately)
-          publish: echo "Release handled in separate job"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
